@@ -1,0 +1,8 @@
+{
+  "name": "Biblia Sacra",
+  "description": "A modern, distraction-free Bible reading app.",
+  "requestFramePermissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

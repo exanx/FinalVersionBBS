@@ -1,0 +1,6 @@
+{
+  "summary": "Implementation plan for updating Biblia Sacra: setting CPDV as the default Bible translation for offline caching and reading, redesigning the offline mode indicator into an unobtrusive bottom-right floating badge with interactive tooltip & offline storage shortcut, updating and fixing sw.js core asset caching, removing the Quick Scripture Inspiration section from Quote Studio, and resolving bugs.",
+  "updatedAt": "2026-10-17T13:33:25.732618334Z",
+  "requestFeedback": true,
+  "userFacing": true
+}

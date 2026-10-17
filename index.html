@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+
+    <!-- App Force Reset Script -->
+    <script>
+        const FORCE_RESET_VERSION = "3.2"; 
+
+        try {
+            if (localStorage.getItem("app_reset_version") !== FORCE_RESET_VERSION) {
+                console.log("Applying global force reset for V2 Sync Update...");
+                localStorage.clear();
+                localStorage.setItem("app_reset_version", FORCE_RESET_VERSION);
+                indexedDB.deleteDatabase("SanctaBibliaDB");
+                indexedDB.deleteDatabase("firebaseLocalStorageDb"); 
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => caches.delete(name));
+                    });
+                }
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.getRegistrations().then(registrations => {
+                        registrations.forEach(registration => registration.unregister());
+                    });
+                }
+                window.location.reload();
+            }
+        } catch (e) {
+            console.warn("Force reset check skipped:", e);
+        }
+    </script>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Biblia Sacra</title>
+    <meta name="description" content="A modern, distraction-free Bible reading app.">
+	
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="alternate icon" href="./favicon.ico">
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="./icon-512.png">
+    <meta property="og:title" content="Biblia Sacra">
+    <meta property="og:description" content="A modern, distraction-free Bible reading app.">
+    <meta property="og:image" content="/screenshot-desktop.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Biblia Sacra">
+    <meta name="twitter:description" content="A modern, distraction-free Bible reading app.">
+    <meta name="twitter:image" content="/screenshot-desktop.png">
+    
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Biblia Sacra">
+    
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com/">
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=Lato:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,500;1,400&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;600&family=Open+Sans:ital,wght@0,400;0,600;1,400&family=Oswald:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Quicksand:wght@400;600&family=Roboto:ital,wght@0,400;0,500;1,400&family=Tinos:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            safelist: [
+                'border-yellow-400', 'border-green-400', 'border-blue-400', 'border-pink-400', 'border-purple-400',
+                'bg-yellow-400', 'bg-green-400', 'bg-blue-400', 'bg-pink-400', 'bg-purple-400',
+                'highlight-yellow', 'highlight-green', 'highlight-blue', 'highlight-pink', 'highlight-purple'
+            ],
+            theme: {
+                extend: {
+                    colors: {
+                        primary: 'var(--color-primary)',
+                        'primary-hover': 'var(--color-primary-hover)',
+                        'primary-glow': 'var(--color-primary-glow)',
+                        'surface-dark': '#0a0a0a',
+                        'surface-light': '#ffffff',
+                    },
+                    boxShadow: {
+                        'glow-primary': '0 0 15px var(--color-primary-glow)',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Firebase SDKs V2 -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+
+        try {
+            const firebaseConfig = {
+              apiKey: "AIzaSyCCDq-rvjw_o3APjQRT4EfWRWDFdUgu26Y",
+              authDomain: "sanctabiblia.firebaseapp.com",
+              projectId: "sanctabiblia",
+              storageBucket: "sanctabiblia.appspot.com",
+              messagingSenderId: "695688083334",
+              appId: "1:695688083334:web:3a030b5ade0c8af0061e07"
+            };
+            const app = initializeApp(firebaseConfig);
+            const db = getFirestore(app);
+            
+            // Enable Native Offline Queuing & Resolution
+            enableIndexedDbPersistence(db).catch(err => {
+                console.warn("Firestore Persistence failed:", err.code);
+            });
+
+            window.firebase = { auth: getAuth(app), db, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, doc, setDoc, getDoc, onSnapshot };
+        } catch (err) {
+            console.warn("Firebase initialization warning:", err);
+            window.firebase = {};
+        }
+    </script>
+
+    <style>
+        :root {
+            --font-size-base: 1.125rem;
+            --line-height-ratio: 1.75;
+            --line-height-base: calc(var(--font-size-base) * var(--line-height-ratio));
+            --font-family-base: 'Inter';
+            --font-weight-base: 400;
+            --content-width: 100;
+            --color-primary: #4f46e5;
+            --color-primary-hover: #4338ca;
+            --color-primary-glow: rgba(79, 70, 229, 0.3);
+        }
+
+        html.dark { color-scheme: dark; }
+        body { font-family: 'Inter', sans-serif; background-color: #f9fafb; color: #111827; overflow-x: hidden; transition: background-color 0.3s ease; }
+        html.dark body { background-color: #000000; color: #e5e5e5; }
+        
+        body[style*="--custom-bg"] { background-color: var(--custom-bg) !important; }
+        body[style*="--custom-text"] #scripture-display, 
+        body[style*="--custom-text"] #scripture-display h2.chapter-heading, 
+        body[style*="--custom-text"] .verse-paragraph {
+            color: var(--custom-text) !important;
+        }
+
+        #main-scroll-area { overflow-anchor: none; scroll-behavior: auto; }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7); 
+            backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%);
+            border: 1px solid rgba(0, 0, 0, 0.1); 
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.1), inset 0 1px 0 0 rgba(255, 255, 255, 0.6);
+        }
+        .dark .glass-panel {
+            background: rgba(18, 18, 20, 0.65); 
+            border: 1px solid rgba(255, 255, 255, 0.12); 
+            box-shadow: 0 10px 40px -5px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+        }
+        
+        .glass-nav { 
+            background: rgba(255, 255, 255, 0.75); 
+            backdrop-filter: blur(24px) saturate(150%); -webkit-backdrop-filter: blur(24px) saturate(150%); 
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08); 
+        }
+        .dark .glass-nav { 
+            background: rgba(10, 10, 12, 0.75); 
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1); 
+        }
+
+        .glass-input { background: #ffffff; border: 1px solid #e5e7eb; transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+        .dark .glass-input { background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); color: #f3f4f6; }
+        .glass-input:focus-within { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-glow); outline: none; }
+        input.glass-input:focus, select.glass-input:focus { border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-glow); outline: none; }
+
+        #scripture-display { font-family: var(--font-family-base), sans-serif; font-size: var(--font-size-base); line-height: var(--line-height-base); font-weight: var(--font-weight-base); }
+        #reading-container { max-width: calc(850px * (var(--content-width) / 100)); transition: max-width 0.3s ease; margin: 0 auto; }
+        @media (max-width: 768px) { #reading-container { max-width: 100% !important; padding-left: 1.25rem; padding-right: 1.25rem; } }
+
+        .verse-paragraph { padding: 0.25rem 0.5rem; margin: 0 -0.5rem 0.5rem -0.5rem; border-radius: 0.5rem; transition: background-color 0.2s ease; }
+        .verse-paragraph:hover { background-color: rgba(0,0,0,0.03); }
+        .dark .verse-paragraph:hover { background-color: rgba(255,255,255,0.04); }
+        .verse-num { font-size: 0.65em; font-weight: 600; color: #9ca3af; margin-right: 0.3em; user-select: none; top: -0.4em; position: relative; padding: 0.1em 0.2em; border-radius: 0.2em; transition: all 0.2s ease; cursor: pointer; }
+        .dark .verse-num { color: #6b7280; }
+        .verse-num:hover { background-color: var(--color-primary-glow); color: var(--color-primary); }
+
+        .btn-primary { background-color: var(--color-primary); color: white; transition: all 0.2s ease; }
+        .btn-primary:hover { background-color: var(--color-primary-hover); box-shadow: 0 4px 12px var(--color-primary-glow); transform: translateY(-1px); }
+        .btn-primary:active { transform: translateY(0); }
+        
+        .btn-secondary { background-color: #f3f4f6; color: #374151; transition: all 0.2s ease; border: 1px solid transparent; }
+        .dark .btn-secondary { background-color: #18181b; color: #d1d5db; border: 1px solid #27272a; }
+        .btn-secondary:hover { background-color: #e5e7eb; }
+        .dark .btn-secondary:hover { background-color: #27272a; border-color: #3f3f46; }
+
+        .sidebar-closed-left { transform: translateX(-100%); }
+        .grid-view-slide { transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+        .slide-left { transform: translateX(-100%); } .slide-center { transform: translateX(0); } .slide-right { transform: translateX(100%); }
+        .modal-enter { animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes modalFadeIn { from { opacity: 0; transform: scale(0.97) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
+        .dark ::-webkit-scrollbar-thumb { background: #3f3f46; }
+
+        .custom-scrollbar::-webkit-scrollbar { height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(156, 163, 175, 0.5); border-radius: 10px; }
+
+        .ambient-blob { position: fixed; border-radius: 50%; filter: blur(120px); z-index: -1; opacity: 0.15; transition: opacity 0.5s ease; pointer-events: none; }
+        .dark .ambient-blob { opacity: 0.03; }
+        .header-icon-mask { background-color: var(--color-primary); -webkit-mask: url('./sancta.svg') no-repeat center; mask: url('./sancta.svg') no-repeat center; -webkit-mask-size: contain; mask-size: contain; }
+        
+        .mainscreen-icon-mask {
+            -webkit-mask: url('./mainscreen.svg') no-repeat center;
+            mask: url('./mainscreen.svg') no-repeat center;
+            -webkit-mask-size: contain;
+            mask-size: contain;
+        }
+
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: none; border-radius: 4px; }
+        input[type="color"]::-moz-color-swatch { border: none; border-radius: 4px; }
+        
+        .highlight-yellow { background-color: rgba(250, 204, 21, 0.25); } .highlight-green { background-color: rgba(74, 222, 128, 0.25); } .highlight-blue { background-color: rgba(96, 165, 250, 0.25); } .highlight-pink { background-color: rgba(244, 114, 182, 0.25); } .highlight-purple { background-color: rgba(192, 132, 252, 0.25); }
+        .dark .highlight-yellow { background-color: rgba(250, 204, 21, 0.1); } .dark .highlight-green { background-color: rgba(74, 222, 128, 0.1); } .dark .highlight-blue { background-color: rgba(96, 165, 250, 0.1); } .dark .highlight-pink { background-color: rgba(244, 114, 182, 0.1); } .dark .highlight-purple { background-color: rgba(192, 132, 252, 0.1); }
+        
+        .bookmark-visual { border-left: 3px solid var(--color-primary); padding-left: 0.5rem; }
+
+        /* Real-time Voice Reader active verse highlighting */
+        .verse-reading-active {
+            background-color: rgba(217, 119, 6, 0.16) !important;
+            border-left: 3.5px solid var(--color-primary) !important;
+            padding-left: 0.65rem !important;
+            border-radius: 0.375rem;
+            box-shadow: 0 0 16px rgba(217, 119, 6, 0.12);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .dark .verse-reading-active {
+            background-color: rgba(217, 119, 6, 0.22) !important;
+            border-left: 3.5px solid var(--color-primary) !important;
+        }
+        
+        .color-swatch { transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); opacity: 0.4; transform: scale(0.85); }
+        .color-swatch:hover { transform: scale(1.05); opacity: 0.8; }
+        .color-swatch.selected { opacity: 1; transform: scale(1.25); box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--color-primary); }
+        .dark .color-swatch.selected { box-shadow: 0 0 0 2px #18181b, 0 0 0 4px var(--color-primary); }
+
+        #toast-notification.show { transform: translateY(0); opacity: 1; }
+
+        /* === LIVE ANIMATED ATMOSPHERIC EFFECTS === */
+        body[data-live-effect="none"]::before,
+        body[data-live-effect="none"]::after {
+            display: none !important;
+        }
+
+        /* 1. Night Sky — Twinkling Celestial Stars & Stardust Drift */
+        body[data-active-theme="night_sky"]::before,
+        body[data-live-effect="night_sky"]::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background-image: 
+                radial-gradient(1.2px 1.2px at 25px 35px, rgba(255,255,255,0.9), transparent),
+                radial-gradient(2px 2px at 120px 160px, rgba(255,255,255,1), transparent),
+                radial-gradient(1.2px 1.2px at 280px 90px, rgba(147,197,253,0.9), transparent),
+                radial-gradient(2.2px 2.2px at 450px 320px, rgba(255,255,255,0.95), transparent),
+                radial-gradient(1.2px 1.2px at 640px 190px, rgba(191,219,254,0.85), transparent),
+                radial-gradient(2.5px 2.5px at 820px 480px, rgba(255,255,255,1), transparent),
+                radial-gradient(1.2px 1.2px at 980px 130px, rgba(255,255,255,0.8), transparent),
+                radial-gradient(2px 2px at 1240px 370px, rgba(147,197,253,0.95), transparent);
+            background-repeat: repeat;
+            background-size: 550px 550px;
+            animation: nightSkyTwinkle 6s ease-in-out infinite alternate;
+            opacity: 0.85;
+        }
+        body[data-active-theme="night_sky"]::after,
+        body[data-live-effect="night_sky"]::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: radial-gradient(circle 850px at 75% 25%, rgba(30, 58, 138, 0.22), transparent 70%),
+                        radial-gradient(circle 650px at 20% 80%, rgba(59, 130, 246, 0.15), transparent 70%);
+            animation: nightSkyDrift 16s ease-in-out infinite alternate;
+        }
+        @keyframes nightSkyTwinkle {
+            0% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 0.95; }
+            100% { opacity: 0.5; transform: scale(1.01); }
+        }
+        @keyframes nightSkyDrift {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(-20px, 15px); }
+        }
+
+        /* 2. Neon Blue / Living Waters — Electric Ambient Waters */
+        body[data-active-theme="neon_blue"]::before,
+        body[data-live-effect="neon_blue"]::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: radial-gradient(circle 800px at 50% 10%, rgba(0, 210, 255, 0.18), transparent 70%),
+                        radial-gradient(circle 600px at 85% 85%, rgba(2, 132, 199, 0.14), transparent 70%),
+                        radial-gradient(circle 450px at 15% 50%, rgba(6, 182, 212, 0.10), transparent 70%);
+            animation: neonAuraPulse 4.5s ease-in-out infinite alternate;
+        }
+        @keyframes neonAuraPulse {
+            0% { opacity: 0.45; filter: hue-rotate(0deg); }
+            100% { opacity: 1; filter: hue-rotate(14deg); }
+        }
+
+        /* 3. Yellow Halo / Divine Aureole — Sacred Golden Radiance */
+        body[data-active-theme="yellow_halo"]::before,
+        body[data-live-effect="yellow_halo"]::before {
+            content: '';
+            position: fixed;
+            top: -100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 900px;
+            height: 700px;
+            pointer-events: none;
+            z-index: 0;
+            background: radial-gradient(circle, rgba(250, 204, 21, 0.35) 0%, rgba(253, 224, 71, 0.16) 45%, transparent 70%);
+            border-radius: 50%;
+            animation: haloAuraBreathe 6s ease-in-out infinite alternate;
+        }
+        @keyframes haloAuraBreathe {
+            0% { transform: translateX(-50%) scale(0.93); opacity: 0.55; }
+            100% { transform: translateX(-50%) scale(1.1); opacity: 0.95; }
+        }
+
+        /* 4. Golden Age / Sanctuary Candlelight — Cathedral Warmth */
+        body[data-active-theme="golden_age"]::before,
+        body[data-live-effect="golden_age"]::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: radial-gradient(circle 750px at 50% 25%, rgba(245, 158, 11, 0.20), transparent 70%),
+                        radial-gradient(circle 550px at 15% 80%, rgba(217, 119, 6, 0.14), transparent 70%),
+                        radial-gradient(circle 400px at 85% 40%, rgba(251, 191, 36, 0.10), transparent 70%);
+            animation: candleAuraGlow 6s ease-in-out infinite alternate;
+        }
+        @keyframes candleAuraGlow {
+            0% { opacity: 0.45; transform: scale(0.99); }
+            50% { opacity: 0.95; transform: scale(1.015); }
+            100% { opacity: 0.55; transform: scale(0.995); }
+        }
+
+        /* 5. Red Rose — Living Velvet Crimson Pulse */
+        body[data-active-theme="red_rose"]::before,
+        body[data-live-effect="red_rose"]::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: radial-gradient(circle 750px at 50% 18%, rgba(244, 63, 94, 0.20), transparent 70%),
+                        radial-gradient(circle 600px at 80% 80%, rgba(225, 29, 72, 0.15), transparent 70%);
+            animation: roseAuraGlow 5.5s ease-in-out infinite alternate;
+        }
+        @keyframes roseAuraGlow {
+            0% { opacity: 0.45; }
+            100% { opacity: 0.95; }
+        }
+
+        /* 6. Eden Sage — Botanical Meadow Shimmer */
+        body[data-active-theme="eden_sage"]::before,
+        body[data-live-effect="eden_sage"]::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: radial-gradient(circle 800px at 50% 15%, rgba(16, 185, 129, 0.18), transparent 70%),
+                        radial-gradient(circle 550px at 20% 85%, rgba(5, 150, 105, 0.12), transparent 70%),
+                        radial-gradient(circle 450px at 80% 50%, rgba(52, 211, 153, 0.10), transparent 70%);
+            animation: edenAuraBreathe 7s ease-in-out infinite alternate;
+        }
+        @keyframes edenAuraBreathe {
+            0% { opacity: 0.4; transform: scale(0.98); }
+            100% { opacity: 0.95; transform: scale(1.02); }
+        }
+
+        /* 7. Royal Aurora — Liturgical Amethyst & Violet Celestial Wave */
+        body[data-active-theme="royal_amethyst"]::before,
+        body[data-live-effect="royal_aurora"]::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: radial-gradient(circle 800px at 50% 12%, rgba(168, 85, 247, 0.22), transparent 70%),
+                        radial-gradient(circle 600px at 85% 85%, rgba(147, 51, 234, 0.16), transparent 70%),
+                        radial-gradient(circle 450px at 15% 45%, rgba(192, 132, 252, 0.12), transparent 70%);
+            animation: royalAuroraWave 6.5s ease-in-out infinite alternate;
+        }
+        @keyframes royalAuroraWave {
+            0% { opacity: 0.4; filter: hue-rotate(0deg); }
+            100% { opacity: 0.95; filter: hue-rotate(18deg); }
+        }
+
+        /* 8. Morning Dew — Serene Daylight Radiance */
+        body[data-live-effect="morning_dew"]::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: radial-gradient(circle 850px at 50% 10%, rgba(254, 240, 138, 0.26), transparent 70%),
+                        radial-gradient(circle 600px at 20% 80%, rgba(253, 186, 116, 0.16), transparent 70%);
+            animation: morningDewBreathe 8s ease-in-out infinite alternate;
+        }
+        @keyframes morningDewBreathe {
+            0% { opacity: 0.45; transform: scale(0.98); }
+            100% { opacity: 0.92; transform: scale(1.02); }
+        }
+
+    </style>
+</head>
+
+<body class="transition-colors duration-300 antialiased selection:bg-primary/20 overflow-hidden text-gray-800 dark:text-gray-200">
+
+    <!-- Global Offline Mode Floating Indicator (Bottom-Right) -->
+    <div id="offline-floating-indicator" class="fixed bottom-5 right-5 z-40 transition-all duration-300 opacity-0 pointer-events-none translate-y-3 flex flex-col items-end">
+        <!-- Interactive Status Popover / Tooltip -->
+        <div id="offline-status-popover" class="hidden mb-2 p-3 rounded-2xl glass-panel shadow-2xl border border-amber-500/30 text-left w-64 max-w-[calc(100vw-2.5rem)] text-xs space-y-2 backdrop-blur-xl">
+            <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+                <span class="font-bold text-gray-900 dark:text-white text-xs">Offline Mode</span>
+            </div>
+            <p class="text-[11px] text-gray-600 dark:text-gray-300 leading-snug">
+                You are currently reading from device storage.
+            </p>
+            <button type="button" id="offline-popover-manage-btn" class="w-full btn-primary py-1.5 px-2.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"></path></svg>
+                <span>Offline Bible Storage</span>
+            </button>
+        </div>
+
+        <!-- Floating Icon Button Trigger -->
+        <button type="button" id="offline-indicator-icon-btn" class="w-11 h-11 rounded-2xl bg-amber-500/90 hover:bg-amber-500 text-white shadow-xl flex items-center justify-center border border-white/20 backdrop-blur-md cursor-pointer transition-transform hover:scale-105 active:scale-95 group focus:outline-none" aria-label="Offline Mode Status" title="Offline Mode — Click to inspect">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 00-12.728 0m1.414 1.414a7 7 0 009.9 0m-8.486 1.414a5 5 0 007.072 0M12 18v.01M3 3l18 18"></path>
+            </svg>
+            <span class="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-red-400 border-2 border-amber-600"></span>
+        </button>
+    </div>
+
+    <div class="ambient-blob bg-primary w-96 h-96 top-[-10%] left-[-10%]"></div>
+    <div class="ambient-blob bg-purple-500 w-96 h-96 bottom-[-10%] right-[-10%]"></div>
+
+    <div id="selection-tooltip" class="fixed z-50 hidden glass-panel !bg-white/95 dark:!bg-[#121214]/95 rounded-xl shadow-2xl py-2 px-3.5 text-[11px] font-bold uppercase tracking-wider text-gray-800 dark:text-gray-200 cursor-pointer transform -translate-x-1/2 -translate-y-[120%] transition-all duration-200 opacity-0 pointer-events-none flex items-center gap-2 hover:text-primary dark:hover:text-primary border border-gray-200/60 dark:border-white/10 group backdrop-blur-xl">
+        <svg class="w-4 h-4 text-primary group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"></path></svg>
+        Lookup
+    </div>
+
+    <!-- Mobile Header -->
+    <header class="fixed top-0 w-full z-30 glass-nav px-3 py-2.5 flex justify-between items-center lg:hidden transition-transform">
+        <div class="flex items-center gap-1">
+            <button id="open-mobile-sidebar-btn-floating" class="p-2 rounded-xl text-gray-700 dark:text-gray-200 hover:text-primary dark:hover:text-primary hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer" aria-label="Menu" title="Menu">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"></path></svg>
+            </button>
+            <button class="open-quote-modal-btn p-2 rounded-xl text-gray-700 dark:text-gray-200 hover:text-primary dark:hover:text-primary hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer" aria-label="Quote Maker" title="Quote Maker">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z"></path></svg>
+            </button>
+        </div>
+        <div class="flex-1 flex flex-col items-center justify-center cursor-pointer open-grid-modal-btn group px-2 min-w-0">
+            <div class="flex items-center gap-1.5 max-w-full">
+                <span class="current-selection-text font-bold text-sm tracking-tight text-gray-900 dark:text-white group-hover:text-primary transition-colors truncate">Genesis 1</span>
+                <svg class="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+            </div>
+            <p id="mobile-version-subtitle" class="text-[9px] uppercase tracking-widest font-semibold text-primary mt-0.5 truncate">Catholic Public Domain</p>
+        </div>
+        <div class="flex items-center gap-1">
+            <button id="open-highlights-mobile-btn" class="p-2 rounded-xl text-gray-700 dark:text-gray-200 hover:text-primary dark:hover:text-primary hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer" aria-label="Notes & Highlights" title="Notes & Highlights">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6A2.25 2.25 0 016 3.75h1.5m9 0h-9"></path></svg>
+            </button>
+            <button class="open-settings-modal-btn p-2 rounded-xl text-gray-700 dark:text-gray-200 hover:text-primary dark:hover:text-primary hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer" aria-label="Settings" title="Settings">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Mobile Sidebar -->
+    <div id="mobile-sidebar-container" class="fixed inset-0 z-40 lg:hidden sidebar-closed-left transition-transform duration-300 ease-in-out">
+        <div id="mobile-sidebar-overlay" class="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity"></div>
+        <div class="sidebar relative flex flex-col w-80 max-w-[85vw] h-full bg-white dark:bg-[#0a0a0a] border-r border-gray-200 dark:border-white/10 shadow-2xl">
+            <div class="flex items-center justify-between p-5 border-b border-gray-100 dark:border-zinc-800/50">
+                <div class="header-icon-mask h-8 w-32" aria-label="Sancta Logo"></div>
+                <button id="close-mobile-sidebar-btn" class="p-2 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div id="mobile-sidebar-controls" class="flex-1 overflow-y-auto p-5 space-y-6"></div>
+            
+            <div class="p-5 border-t border-gray-100 dark:border-white/5 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-black/20 mt-auto">
+                <p class="text-[10px] uppercase tracking-widest font-bold text-gray-400 dark:text-gray-500 mb-1">Biblia Sacra V3.2 Sync</p>
+                <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500">Created by <a href="https://github.com/exanx" target="_blank" class="text-primary hover:underline font-bold">EXANX</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Desktop Layout -->
+    <div class="flex h-screen w-full relative z-10">
+        <aside class="hidden lg:flex flex-col w-[22rem] h-full flex-shrink-0 bg-gray-50/50 dark:bg-[#0a0a0a]/50 border-r border-gray-200 dark:border-white/5 z-20">
+            <div id="desktop-sidebar" class="flex flex-col w-full h-full overflow-hidden">
+                <div class="p-6 border-b border-gray-200 dark:border-white/5 flex flex-col items-center justify-center pt-8">
+                    <div class="header-icon-mask h-10 w-40 mb-2" aria-label="Sancta Logo"></div>
+                    <p class="text-[9px] uppercase tracking-[0.3em] font-semibold text-primary/80">Holy Bible</p>
+                </div>
+                <div id="desktop-sidebar-controls" class="flex-1 overflow-y-auto p-6 space-y-6"></div>
+                
+                <div class="p-5 border-t border-gray-200/60 dark:border-white/5 flex flex-col items-center justify-center bg-gray-50/50 dark:bg-black/20 mt-auto">
+                    <p class="text-[10px] uppercase tracking-widest font-bold text-gray-400 dark:text-gray-500 mb-1">Biblia Sacra 3.2 Sync</p>
+                    <p class="text-[10px] font-medium text-gray-400 dark:text-gray-500">Created by <a href="https://github.com/exanx" target="_blank" class="text-primary hover:underline font-bold">EXANX</a></p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Reading Area -->
+        <div class="flex-1 h-full overflow-y-auto relative" id="main-scroll-area">
+            <div id="reading-container" class="w-full mx-auto pb-32 pt-20 lg:pt-12 px-5 md:px-8 relative min-h-screen flex flex-col">
+                
+                <header class="hidden lg:flex flex-col items-center justify-center mb-10 group">
+                    <div class="flex items-center gap-2.5">
+                        <div class="inline-flex items-center gap-2 text-gray-400 group-hover:text-primary transition-colors cursor-pointer open-grid-modal-btn">
+                            <span class="current-selection-text text-sm font-semibold tracking-wide text-gray-800 dark:text-gray-200 group-hover:text-primary transition-colors">Genesis 1</span>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                        </div>
+                        <button id="desktop-chapter-listen-btn" type="button" class="p-1.5 rounded-lg text-gray-500 hover:text-primary hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold" title="Listen to current chapter">
+                            <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M11 5L6 9H2v6h4l5 4V5z"></path></svg>
+                            <span>Listen</span>
+                        </button>
+                    </div>
+                    <p id="version-subtitle" class="text-[10px] uppercase tracking-widest font-semibold text-gray-500 mt-1">Catholic Public Domain Version</p>
+                </header>
+
+                <main id="content-area" class="flex-1">
+                    <div id="top-sentinel" class="h-4 w-full flex items-center justify-center opacity-0 transition-opacity"></div>
+                    
+                    <div id="scripture-display-wrapper">
+                        <div id="scripture-display" class="max-w-none text-gray-800 dark:text-gray-200 relative">
+                            <div id="initial-message" class="text-center py-32">
+                                <div class="w-28 h-28 mx-auto mb-6 rounded-3xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 flex items-center justify-center p-6 shadow-sm">
+                                    <div class="w-full h-full mainscreen-icon-mask bg-gray-800 dark:bg-gray-200"></div>
+                                </div>
+                                <h2 class="text-2xl font-bold mb-2 tracking-tight text-gray-900 dark:text-white">Seek & Find</h2>
+                                <p class="text-gray-500 text-sm max-w-sm mx-auto leading-relaxed">Select a book, chapter, and translation from the menu to begin reading.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="bottom-sentinel" class="h-24 w-full mt-4 flex items-center justify-center opacity-0 transition-opacity"></div>
+                </main>
+                
+                <footer class="text-center mt-16 pt-8 border-t border-gray-200/50 dark:border-white/5 text-sm text-gray-400 dark:text-gray-500 pb-8">
+                    <p>Biblia Sacra 3.2 Sync • Created by <a href="https://github.com/exanx" target="_blank" class="text-primary hover:underline font-semibold">EXANX</a></p>
+                </footer>
+            </div>
+        </div>
+    </div>
+
+    <!-- Template for Clean Dynamic Sidebar -->
+    <template id="sidebar-content-template">
+        <div class="space-y-6">
+            <!-- Search -->
+            <div>
+                <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">Search</label>
+                <div class="relative">
+                    <input type="text" class="direct-verse-input glass-input w-full pl-9 pr-3 py-2.5 rounded-lg outline-none text-sm placeholder-gray-400" placeholder="e.g. Jn 3:16">
+                    <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"></path></svg>
+                    <button class="direct-verse-search-btn absolute right-1.5 top-1/2 -translate-y-1/2 btn-secondary text-[10px] font-bold px-2 py-1 rounded-md">GO</button>
+                </div>
+            </div>
+            
+            <!-- Navigation -->
+            <div>
+                <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">Book & Chapter</label>
+                <button class="open-grid-modal-btn w-full btn-primary flex items-center justify-between font-medium py-2.5 px-4 rounded-lg transition-all text-sm">
+                    <span class="current-selection-text">Genesis 1</span>
+                    <svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                </button>
+            </div>
+
+            <!-- Version -->
+            <div>
+                <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">Translation</label>
+                <select class="translation-select glass-input w-full p-2.5 rounded-lg outline-none text-sm cursor-pointer"></select>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="pt-4 border-t border-gray-200 dark:border-white/5 space-y-2">
+                <button class="open-voice-reader-btn-sidebar w-full flex items-center gap-3 p-2.5 rounded-xl btn-secondary text-sm font-medium cursor-pointer transition-colors hover:border-primary/40"><svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.5A2.25 2.25 0 012.25 13.5v-3a2.25 2.25 0 012.25-2.25h2.25z"></path></svg> <span>Voice Reader</span></button>
+                <button class="open-highlights-modal-btn-sidebar w-full flex items-center gap-3 p-2.5 rounded-xl btn-secondary text-sm font-medium cursor-pointer transition-colors hover:border-primary/40"><svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.147l-3.102.993a.375.375 0 01-.495-.495l.993-3.102a4.5 4.5 0 011.147-1.89l13.418-13.418z"></path></svg> <span>Notes & Highlights</span></button>
+                <button class="open-bookmarks-modal-btn w-full flex items-center gap-3 p-2.5 rounded-xl btn-secondary text-sm font-medium cursor-pointer transition-colors hover:border-primary/40"><svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.5 3.5h-11a2 2 0 00-2 2v15l6.5-3 6.5 3v-15a2 2 0 00-2-2z"></path></svg> <span>Bookmarks</span></button>
+                <button class="open-quote-modal-btn w-full flex items-center gap-3 p-2.5 rounded-xl btn-secondary text-sm font-medium cursor-pointer transition-colors hover:border-primary/40"><svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z"></path></svg> <span>Quote Studio</span></button>
+                
+                <!-- Dict and Wiki Split Buttons -->
+                <div class="flex gap-2 w-full">
+                    <button class="open-dict-modal-btn flex-1 flex items-center justify-center gap-1.5 p-2 rounded-xl btn-secondary text-xs font-medium cursor-pointer transition-colors hover:border-primary/40"><svg class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"></path></svg> <span>Dictionary</span></button>
+                    <button class="open-wiki-modal-btn flex-1 flex items-center justify-center gap-1.5 p-2 rounded-xl btn-secondary text-xs font-medium cursor-pointer transition-colors hover:border-primary/40"><svg class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 21.5c-3-4.5-3-14.5 0-19"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.5 12h19"></path></svg> <span>Wikipedia</span></button>
+                </div>
+
+                <!-- Prominent Settings Button -->
+                <button class="open-settings-modal-btn w-full flex items-center justify-center gap-2 p-2.5 rounded-xl font-semibold text-xs transition-all cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-800 dark:bg-white/10 dark:hover:bg-white/15 dark:text-gray-100 border border-gray-200/80 dark:border-white/10 shadow-xs hover:border-primary/40">
+                    <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                    <span>Settings</span>
+                </button>
+            </div>
+        </div>
+    </template>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center p-4 z-50 hidden transition-opacity">
+        <div class="glass-panel modal-enter w-full max-w-xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden">
+            <div class="flex justify-between items-center p-5 border-b border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/40 z-10">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">Settings</h3>
+                <button id="close-settings-modal-btn" class="p-1.5 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            
+            <div class="p-5 overflow-y-auto space-y-6">
+
+                <!-- 1. LIVE READING PREVIEW CARD -->
+                <div class="settings-preview-container rounded-2xl p-4 glass-input border border-gray-200/80 dark:border-white/10 shadow-sm relative overflow-hidden">
+                    <div class="flex items-center justify-between mb-3 pb-2 border-b border-gray-100 dark:border-white/5">
+                        <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center justify-center w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-gray-500 dark:text-gray-400">Live Reading Preview</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-[10px] font-medium text-gray-400 dark:text-gray-500 font-mono">
+                            <span id="preview-font-label" class="text-primary font-semibold">Inter</span>
+                            <span>•</span>
+                            <span id="preview-width-label">100% width</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Simulated viewport wrapper showing responsive margins -->
+                    <div class="w-full bg-gray-100/70 dark:bg-black/50 rounded-xl p-3 flex justify-center items-center overflow-hidden transition-all min-h-[150px]">
+                        <div id="settings-preview-box" class="rounded-xl p-4 transition-all duration-200 shadow-md border border-gray-200/60 dark:border-white/5 overflow-hidden" style="width: 100%;">
+                            <h4 id="preview-heading" class="text-base md:text-lg font-bold mb-2 tracking-tight transition-colors">John 1:1–2</h4>
+                            <div id="preview-text" class="space-y-1.5 transition-all text-sm leading-relaxed">
+                                <p class="preview-verse leading-relaxed">
+                                    <sup class="font-bold text-[10px] text-gray-400 select-none mr-1">1</sup>In the beginning was the Word, and the Word was with God, and the Word was God.
+                                </p>
+                                <p class="preview-verse leading-relaxed">
+                                    <sup class="font-bold text-[10px] text-gray-400 select-none mr-1">2</sup><span id="preview-sample-highlight" class="highlight-yellow px-1 py-0.5 rounded transition-all">The same was in the beginning with God.</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center text-[10px] text-gray-400 dark:text-gray-500 mt-2 px-1">
+                        <span>Font, width, themes & custom colors apply instantly</span>
+                        <span id="preview-theme-indicator" class="font-semibold text-primary">Default</span>
+                    </div>
+                </div>
+
+                <!-- 2. FULL THEMES -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Full Themes</label>
+                            <p class="text-[11px] text-gray-400 dark:text-gray-500">Complete styling: UI mode, canvas, accent & curated font</p>
+                        </div>
+                        <span id="active-theme-name-badge" class="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">AMOLED Black</span>
+                    </div>
+
+                    <!-- Category Tabs: Main (2) | Light (6) | Dark (6) -->
+                    <div class="flex p-1 bg-gray-100 dark:bg-white/5 rounded-xl gap-1 mb-3">
+                        <button type="button" class="theme-category-tab flex-1 py-1.5 px-2 text-xs font-semibold rounded-lg transition-all active bg-white dark:bg-white/10 text-primary shadow-xs cursor-pointer" data-category="main">
+                            Main <span class="text-[10px] opacity-75 font-normal">(2)</span>
+                        </button>
+                        <button type="button" class="theme-category-tab flex-1 py-1.5 px-2 text-xs font-semibold rounded-lg transition-all text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer" data-category="light">
+                            Light <span class="text-[10px] opacity-75 font-normal">(6)</span>
+                        </button>
+                        <button type="button" class="theme-category-tab flex-1 py-1.5 px-2 text-xs font-semibold rounded-lg transition-all text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white cursor-pointer" data-category="dark">
+                            Dark <span class="text-[10px] opacity-75 font-normal">(6)</span>
+                        </button>
+                    </div>
+
+                    <!-- Themes Cards Container (rendered by JS) -->
+                    <div id="full-themes-grid" class="grid grid-cols-2 gap-2">
+                        <!-- Populated dynamically by JS -->
+                    </div>
+                </div>
+
+                <!-- 3. LIVE ATMOSPHERIC EFFECTS -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5">
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Live Atmospheric Effects</label>
+                        <span id="active-live-effect-badge" class="text-[10px] font-bold text-primary px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">Theme Default</span>
+                    </div>
+                    <p class="text-[11px] text-gray-500 dark:text-gray-400 mb-2.5">Subtle ambient background motion for presets and custom themes</p>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5" id="live-effects-options-grid">
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer active ring-2 ring-primary border-primary" data-effect="theme_default">
+                            <span class="font-semibold truncate">Theme Default</span>
+                            <span class="w-2 h-2 rounded-full bg-primary live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="none">
+                            <span class="font-medium text-gray-500 dark:text-gray-400 truncate">Static (None)</span>
+                            <span class="w-2 h-2 rounded-full bg-gray-400/40 live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="night_sky">
+                            <span class="font-semibold text-blue-500 dark:text-blue-400 truncate">Night Sky</span>
+                            <span class="w-2 h-2 rounded-full bg-blue-500 live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="neon_blue">
+                            <span class="font-semibold text-cyan-500 dark:text-cyan-400 truncate">Living Waters</span>
+                            <span class="w-2 h-2 rounded-full bg-cyan-400 live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="yellow_halo">
+                            <span class="font-semibold text-amber-500 dark:text-amber-400 truncate">Divine Aureole</span>
+                            <span class="w-2 h-2 rounded-full bg-amber-400 live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="golden_age">
+                            <span class="font-semibold text-yellow-600 dark:text-yellow-400 truncate">Candlelight</span>
+                            <span class="w-2 h-2 rounded-full bg-yellow-500 live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="red_rose">
+                            <span class="font-semibold text-rose-500 dark:text-rose-400 truncate">Velvet Crimson</span>
+                            <span class="w-2 h-2 rounded-full bg-rose-500 live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="eden_sage">
+                            <span class="font-semibold text-emerald-600 dark:text-emerald-400 truncate">Eden Laurel</span>
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="royal_aurora">
+                            <span class="font-semibold text-purple-600 dark:text-purple-400 truncate">Royal Aurora</span>
+                            <span class="w-2 h-2 rounded-full bg-purple-500 live-effect-dot"></span>
+                        </button>
+                        <button type="button" class="live-effect-option-btn text-left p-2 rounded-xl border border-gray-200/80 dark:border-white/10 glass-input hover:border-primary/50 transition-all text-xs flex items-center justify-between cursor-pointer" data-effect="morning_dew">
+                            <span class="font-semibold text-amber-600 dark:text-amber-300 truncate">Dawn Radiance</span>
+                            <span class="w-2 h-2 rounded-full bg-amber-300 live-effect-dot"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4. APPEARANCE & COLORS -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5 space-y-4">
+                    <div class="flex justify-between items-center">
+                        <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Appearance & Colors</label>
+                        <span class="text-[10px] text-gray-400 dark:text-gray-500">Theme mode, accent & canvas</span>
+                    </div>
+
+                    <!-- Theme Mode Toggle -->
+                    <button class="theme-toggle w-full flex items-center justify-between p-2.5 rounded-lg glass-input font-medium text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                        <span class="theme-text">Dark Mode</span>
+                        <svg class="theme-icon-light w-4 h-4 hidden text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"></path></svg>
+                        <svg class="theme-icon-dark w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
+                    </button>
+                    
+                    <!-- Accent Color Picker -->
+                    <div>
+                        <label class="block text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Accent Color</label>
+                        <div class="flex justify-between items-center glass-input p-2 rounded-lg">
+                            <button class="accent-picker w-5 h-5 rounded-full bg-indigo-600 active cursor-pointer" data-color="#4f46e5" data-hover="#4338ca" data-glow="rgba(79,70,229,0.3)"></button>
+                            <button class="accent-picker w-5 h-5 rounded-full bg-rose-600 cursor-pointer" data-color="#e11d48" data-hover="#be123c" data-glow="rgba(225,29,72,0.3)"></button>
+                            <button class="accent-picker w-5 h-5 rounded-full bg-emerald-500 cursor-pointer" data-color="#10b981" data-hover="#059669" data-glow="rgba(16,185,129,0.3)"></button>
+                            <button class="accent-picker w-5 h-5 rounded-full bg-amber-500 cursor-pointer" data-color="#f59e0b" data-hover="#d97706" data-glow="rgba(245,158,11,0.3)"></button>
+                            <button class="accent-picker w-5 h-5 rounded-full bg-cyan-500 cursor-pointer" data-color="#06b6d4" data-hover="#0891b2" data-glow="rgba(6,182,212,0.3)"></button>
+                            <div class="custom-accent-container relative w-5 h-5 rounded-full overflow-hidden cursor-pointer" style="background: conic-gradient(from 180deg, red, yellow, lime, aqua, blue, magenta, red);" title="Custom Accent Color">
+                                <input type="color" class="custom-accent-picker absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 opacity-0 cursor-pointer" value="#a855f7">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Custom Canvas Colors -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label class="block text-[9px] font-bold uppercase tracking-wider text-gray-400">Custom Canvas Colors</label>
+                            <span class="text-[9px] text-gray-400">Fine-tune background & text</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1 glass-input p-2 rounded-lg flex flex-col relative overflow-hidden">
+                                <label class="text-[8px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Bg Color</label>
+                                <input type="color" class="custom-bg-picker w-full h-6 cursor-pointer bg-transparent border-none p-0 rounded-sm">
+                            </div>
+                            <div class="flex-1 glass-input p-2 rounded-lg flex flex-col relative overflow-hidden">
+                                <label class="text-[8px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Text Color</label>
+                                <input type="color" class="custom-text-picker w-full h-6 cursor-pointer bg-transparent border-none p-0 rounded-sm">
+                            </div>
+                            <button class="reset-colors-btn glass-input h-[52px] px-3 rounded-lg flex items-center justify-center text-gray-400 hover:text-primary transition-colors cursor-pointer" title="Reset Custom Colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. TYPOGRAPHY -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5">
+                    <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">Typography</label>
+                    <select class="font-family-select glass-input w-full p-2.5 rounded-lg outline-none mb-3 text-sm cursor-pointer">
+                        <!-- Populated by JS -->
+                    </select>
+                    <div class="glass-input rounded-lg flex flex-col divide-y divide-gray-100 dark:divide-white/5">
+                        <div class="flex items-center justify-between p-1">
+                            <div class="flex items-center w-full">
+                                <button class="font-decrease flex-1 p-2 text-gray-500 hover:text-gray-800 dark:hover:text-white transition-colors flex justify-center cursor-pointer" title="Decrease font size"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path></svg></button>
+                                <span class="font-size-display text-xs font-bold px-2 text-primary font-mono">18px</span>
+                                <button class="font-increase flex-1 p-2 text-gray-500 hover:text-gray-800 dark:hover:text-white transition-colors flex justify-center cursor-pointer" title="Increase font size"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
+                            </div>
+                            <div class="h-6 w-px bg-gray-200 dark:bg-white/10"></div>
+                            <button class="font-weight-toggle p-2 w-12 text-sm font-bold text-gray-500 hover:text-gray-800 dark:hover:text-white transition-colors flex justify-center cursor-pointer" title="Bold text">B</button>
+                        </div>
+                        <div class="flex items-center justify-around p-1">
+                            <button class="line-spacing-btn flex-1 p-2 text-gray-400 flex justify-center cursor-pointer" data-ratio="1.3" title="Tight line height"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"></path></svg></button>
+                            <button class="line-spacing-btn flex-1 p-2 text-primary flex justify-center cursor-pointer" data-ratio="1.75" title="Normal line height"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 5h16.5M3.75 12h16.5M3.75 19h16.5"></path></svg></button>
+                            <button class="line-spacing-btn flex-1 p-2 text-gray-400 flex justify-center cursor-pointer" data-ratio="2.2" title="Loose line height"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3.75 4h16.5M3.75 12h16.5M3.75 20h16.5"></path></svg></button>
+                        </div>
+                    </div>
+
+                    <!-- Custom Google Fonts -->
+                    <div class="pt-4 mt-4 border-t border-gray-100 dark:border-white/5">
+                        <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">Custom Google Fonts</label>
+                        <div class="flex gap-2 mb-2">
+                            <input type="text" class="custom-font-name glass-input flex-grow p-2.5 rounded-lg text-sm" placeholder="e.g. Oswald, Dancing Script">
+                            <button class="add-custom-font-btn btn-secondary font-medium px-3 rounded-lg text-xs cursor-pointer">Add</button>
+                        </div>
+                        <div class="custom-fonts-list space-y-2 empty:hidden"></div>
+                    </div>
+                </div>
+                
+                <!-- 6. READING AREA WIDTH -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5">
+                    <div class="flex justify-between items-center mb-2">
+                        <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Reading Area Width</label>
+                        <span class="content-width-display text-[11px] font-bold text-primary font-mono">100%</span>
+                    </div>
+                    <div class="glass-input p-3 rounded-lg space-y-2.5">
+                        <div class="flex items-center gap-3">
+                            <span class="text-[9px] font-bold text-gray-400 uppercase">Min</span>
+                            <input type="range" min="50" max="100" value="100" class="content-width-slider w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-zinc-700 accent-primary">
+                            <span class="text-[9px] font-bold text-gray-400 uppercase">Max</span>
+                        </div>
+                        <div class="flex gap-1.5 pt-1">
+                            <button type="button" class="width-preset-btn flex-1 py-1 px-2 rounded-md btn-secondary text-[10px] font-medium transition-all cursor-pointer" data-width="60">Compact (60%)</button>
+                            <button type="button" class="width-preset-btn flex-1 py-1 px-2 rounded-md btn-secondary text-[10px] font-medium transition-all cursor-pointer" data-width="80">Balanced (80%)</button>
+                            <button type="button" class="width-preset-btn flex-1 py-1 px-2 rounded-md btn-secondary text-[10px] font-medium transition-all text-primary font-bold cursor-pointer" data-width="100">Full (100%)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 7. OFFLINE BIBLE STORAGE -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5" id="offline-cache-section">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-1.5">
+                            <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Offline Bible Storage</label>
+                            <svg class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"></path></svg>
+                        </div>
+                        <span id="offline-status-badge" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300">Checking...</span>
+                    </div>
+
+                    <div class="glass-input p-4 rounded-xl space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Select Translation to Cache:</label>
+                            <select id="offline-version-select" class="glass-input w-full p-2.5 rounded-lg text-sm outline-none cursor-pointer">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+
+                        <!-- Status card -->
+                        <div id="offline-version-info-card" class="p-3.5 rounded-xl bg-gray-50/80 dark:bg-white/5 border border-gray-200/50 dark:border-white/5 flex items-start gap-3">
+                            <div id="offline-info-icon" class="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h5 id="offline-version-title" class="text-xs font-bold text-gray-900 dark:text-white truncate">Catholic Public Domain Version</h5>
+                                <p id="offline-version-desc" class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">73 Books • Complete Catholic Canon (OT + Deuterocanon + NT)</p>
+                                <div id="offline-cached-indicator" class="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 hidden">
+                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"></path></svg>
+                                    <span id="offline-cached-text">Saved locally on device (73/73 Books ready offline)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Download Progress Bar (visible during caching) -->
+                        <div id="offline-progress-container" class="space-y-1.5 hidden">
+                            <div class="flex justify-between items-center text-xs">
+                                <span id="offline-progress-label" class="font-medium text-gray-700 dark:text-gray-300 truncate">Caching Genesis (1/73)...</span>
+                                <span id="offline-progress-percent" class="font-bold text-primary font-mono ml-2">0%</span>
+                            </div>
+                            <div class="w-full bg-gray-200 dark:bg-white/10 rounded-full h-2 overflow-hidden">
+                                <div id="offline-progress-bar" class="bg-primary h-2 rounded-full transition-all duration-150" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Buttons -->
+                        <div class="flex gap-2">
+                            <button id="download-offline-btn" class="flex-1 btn-primary flex items-center justify-center gap-2 font-medium py-2.5 px-3 rounded-lg text-xs shadow-sm cursor-pointer">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                <span id="download-offline-btn-text">Download for Offline Use</span>
+                            </button>
+                            <button id="cancel-offline-btn" class="btn-secondary hidden py-2.5 px-3 rounded-lg text-xs font-semibold text-red-500 hover:text-red-600 cursor-pointer">
+                                Cancel
+                            </button>
+                            <button id="delete-offline-btn" class="btn-secondary hidden py-2.5 px-3 rounded-lg text-xs font-semibold text-red-500 hover:text-red-600 flex items-center justify-center gap-1.5 cursor-pointer" title="Remove offline cache">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                <span>Clear Cache</span>
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-500 dark:text-gray-400 leading-normal">
+                            Downloaded Bibles are stored in your browser's persistent local storage. Chapters will open instantly without needing a network connection.
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- 8. CUSTOM BIBLES -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5">
+                    <div class="flex items-center gap-1.5 mb-2">
+                        <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Custom Translations</label>
+                        <button class="custom-bible-help-btn text-gray-400 hover:text-primary transition-colors cursor-help" title="How to use this feature">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </button>
+                    </div>
+                    
+                    <div class="custom-bible-help-content hidden mb-3 p-3 glass-input rounded-lg text-[10px] text-gray-600 dark:text-gray-400 leading-relaxed shadow-sm">
+                        <p class="font-bold text-gray-900 dark:text-white mb-1">How to add a custom translation:</p>
+                        <ol class="list-decimal pl-3 space-y-1 mb-2">
+                            <li>Host a folder of Bible JSON files (one for each book, e.g. <code class="bg-gray-100 dark:bg-white/10 px-1 rounded">Genesis.json</code>) on GitHub Pages.</li>
+                            <li>Paste the hosted folder's URL as the Base URL below.</li>
+                        </ol>
+                        <p>Format rules & templates: <a href="https://github.com/exanx/bible-json" target="_blank" class="text-primary hover:underline font-semibold">github.com/exanx/bible-json</a></p>
+                    </div>
+
+                    <div class="space-y-2 mb-3">
+                        <input type="text" class="custom-bible-name glass-input w-full p-2.5 rounded-lg text-sm" placeholder="Name (e.g., RSV)">
+                        <input type="text" class="custom-bible-url glass-input w-full p-2.5 rounded-lg text-sm" placeholder="Base URL (e.g., https://yourname.github.io/repo/RSV)">
+                        <button class="add-custom-bible-btn w-full btn-secondary font-medium py-2 rounded-lg text-xs cursor-pointer">Add Custom Bible</button>
+                    </div>
+                    <div class="custom-bibles-list space-y-2 empty:hidden"></div>
+                </div>
+
+                <!-- 8B. VOICE READER & PWA BACKGROUND PLAYBACK -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Voice Reader & Audio</label>
+                            <svg class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M11 5L6 9H2v6h4l5 4V5z"></path></svg>
+                        </div>
+                        <span class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            <span>PWA Background Ready</span>
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-gray-500 dark:text-gray-400">Listen to Scripture read aloud offline with background playback on mobile devices and native lock screen controls.</p>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[9px] font-semibold text-gray-400 mb-1">Preferred Voice</label>
+                            <select id="settings-voice-select" class="glass-input w-full p-2.5 rounded-lg text-xs outline-none cursor-pointer">
+                                <option value="">Default System Voice</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[9px] font-semibold text-gray-400 mb-1">Reading Speed</label>
+                            <select id="settings-voice-speed" class="glass-input w-full p-2.5 rounded-lg text-xs outline-none cursor-pointer">
+                                <option value="0.75">0.75x (Slower)</option>
+                                <option value="1" selected>1.0x (Normal)</option>
+                                <option value="1.25">1.25x (Gentle Fast)</option>
+                                <option value="1.5">1.5x (Fast)</option>
+                                <option value="2">2.0x (Double Speed)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 9. ACCOUNT & CLOUD SYNC -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5 space-y-3">
+                    <div class="flex justify-between items-center">
+                        <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Cloud Sync & Account</label>
+                        <span id="cloud-sync-status-badge" class="inline-flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-zinc-800 dark:text-gray-400">
+                            <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                            <span>Local Only</span>
+                        </span>
+                    </div>
+                    <p class="text-[11px] text-gray-500 dark:text-gray-400">Sync your bookmarks, personal notes, highlights, and preferences across all devices with ultra-low document quota optimization.</p>
+                    
+                    <!-- When signed in: Cloud controls & Sync status -->
+                    <div id="cloud-sync-controls" class="hidden space-y-2">
+                        <div class="flex items-center justify-between text-xs p-2.5 rounded-lg bg-gray-50 dark:bg-zinc-800/60 border border-gray-200/50 dark:border-white/5">
+                            <div class="flex flex-col min-w-0 pr-2">
+                                <span class="font-medium text-gray-800 dark:text-gray-200 truncate" id="cloud-sync-user-label">Account</span>
+                                <span class="text-[10px] text-gray-400 dark:text-gray-500" id="cloud-sync-last-time">Last synced: Never</span>
+                            </div>
+                            <button id="cloud-sync-now-btn" type="button" class="btn-secondary text-xs px-3 py-1.5 rounded-md font-medium flex items-center gap-1.5 cursor-pointer shrink-0 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                <span>Sync Now</span>
+                            </button>
+                        </div>
+                        <div class="text-[10px] text-gray-400 dark:text-gray-500 flex items-center gap-1.5 px-0.5">
+                            <svg class="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+                            <span>Ultra-low read & write mode: Changes are batched and cached locally.</span>
+                        </div>
+                    </div>
+
+                    <button class="auth-management-btn w-full btn-secondary font-medium py-2.5 px-4 rounded-lg text-sm cursor-pointer">Login / Sign Up</button>
+                </div>
+
+                <!-- 10. DATA MANAGEMENT & BACKUP -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5 space-y-2.5">
+                    <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Data & Backup</label>
+                    <div class="flex gap-2">
+                        <button class="export-data-btn flex-1 btn-secondary font-medium py-2 rounded-lg text-xs cursor-pointer">Export Backup</button>
+                        <button class="import-data-btn flex-1 btn-secondary font-medium py-2 rounded-lg text-xs cursor-pointer">Import Backup</button>
+                    </div>
+                    <button class="reset-settings-btn w-full btn-secondary font-medium py-2 rounded-lg text-xs cursor-pointer">Reset Settings to Default</button>
+                    <button class="reset-app-btn w-full bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 font-medium py-2 rounded-lg transition-colors text-xs cursor-pointer">Factory Reset</button>
+                </div>
+
+                <!-- 11. ABOUT & CREDITS -->
+                <div class="pt-5 border-t border-gray-200 dark:border-white/5 pb-2">
+                    <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-2">About & Credits</label>
+                    <div class="glass-input p-4 rounded-xl space-y-3">
+                        <div class="flex items-center gap-3 border-b border-gray-200/50 dark:border-white/5 pb-3">
+                            <div class="mainscreen-icon-mask bg-primary w-8 h-8"></div>
+                            <div>
+                                <h4 class="text-sm font-bold text-gray-900 dark:text-white leading-tight">Biblia Sacra</h4>
+                                <p class="text-[10px] text-gray-500 uppercase tracking-widest font-semibold mt-0.5">V3.2 Sync Edition</p>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400 space-y-2 leading-relaxed">
+                            <p>Created by <a href="https://github.com/exanx" target="_blank" class="text-primary hover:underline font-bold">EXANX</a>. A modern, distraction-free Catholic & ecumenical scripture study app.</p>
+                            <p class="font-bold text-gray-800 dark:text-gray-200 mt-2 mb-1 text-[11px] uppercase tracking-wider">Resources & APIs:</p>
+                            <div class="grid grid-cols-2 gap-1 text-[11px]">
+                                <div>• <a href="https://tailwindcss.com/" target="_blank" class="text-primary hover:underline">Tailwind CSS</a></div>
+                                <div>• <a href="https://firebase.google.com/" target="_blank" class="text-primary hover:underline">Firebase Cloud Sync</a></div>
+                                <div>• <a href="https://bible-api.com/" target="_blank" class="text-primary hover:underline">Bible-api.com</a></div>
+                                <div>• <a href="https://dictionaryapi.dev/" target="_blank" class="text-primary hover:underline">Free Dictionary API</a></div>
+                                <div>• <a href="https://en.wikipedia.org/api/rest_v1/" target="_blank" class="text-primary hover:underline">Wikipedia API</a></div>
+                                <div>• <a href="https://www.pexels.com/api/" target="_blank" class="text-primary hover:underline">Pexels Image API</a></div>
+                                <div>• <a href="https://fonts.google.com/" target="_blank" class="text-primary hover:underline">Google Fonts</a></div>
+                                <div>• <a href="https://marked.js.org/" target="_blank" class="text-primary hover:underline">Marked.js Markdown</a></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div></div>
+        </div>
+    </div>
+
+    <!-- Grid Navigation Modal -->
+    <div id="grid-modal" class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center p-4 md:p-6 z-50 hidden transition-opacity overflow-hidden">
+        <div class="glass-panel modal-enter w-full max-w-4xl h-[85vh] flex flex-col relative overflow-hidden rounded-2xl">
+            <div class="flex justify-between items-center p-4 border-b border-gray-100 dark:border-white/5 z-10 bg-white/40 dark:bg-black/40">
+                <button id="grid-back-btn" class="p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all opacity-0 pointer-events-none flex items-center gap-1.5 font-medium text-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 19.5L8.25 12l7.5-7.5"></path></svg> Back
+                </button>
+                <h3 id="grid-modal-title" class="text-lg font-bold text-gray-900 dark:text-white absolute left-1/2 -translate-x-1/2">Select Book</h3>
+                <button id="close-grid-modal-btn" class="p-2 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="relative flex-1 overflow-hidden">
+                <div id="grid-book-view" class="grid-view-slide slide-center absolute inset-0 overflow-y-auto p-4 md:p-8 space-y-8">
+                    <div>
+                        <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-4 ml-1">Old Testament</h4>
+                        <div id="ot-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3"></div>
+                    </div>
+                    <div>
+                        <h4 class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400 mb-4 ml-1 mt-8">New Testament</h4>
+                        <div id="nt-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3"></div>
+                    </div>
+                </div>
+                <div id="grid-chapter-view" class="grid-view-slide slide-right absolute inset-0 overflow-y-auto p-4 md:p-8">
+                    <div id="chapter-grid" class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 md:gap-3"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reference Search Modal (Dictionary & Wikipedia) -->
+    <div id="dict-modal" class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center p-4 z-50 hidden transition-opacity">
+        <div class="glass-panel modal-enter w-full max-w-md max-h-[90vh] flex flex-col rounded-2xl overflow-hidden relative">
+            <div class="flex justify-between items-center p-5 border-b border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/40 z-10">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">Reference Search</h3>
+                <button id="close-dict-modal-btn" class="p-1.5 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-5 border-b border-gray-100 dark:border-white/5 bg-white/20 dark:bg-black/20 z-10">
+                <div class="flex gap-2 mb-3">
+                    <input type="text" id="reference-search-input" class="glass-input flex-grow p-2.5 rounded-lg text-sm outline-none placeholder-gray-400" placeholder="Type a word to search...">
+                    <button id="reference-search-btn" class="btn-primary px-4 rounded-lg text-sm font-medium">Search</button>
+                </div>
+                <div class="flex gap-2">
+                    <button id="tab-dict" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors bg-primary text-white shadow-sm">Dictionary</button>
+                    <button id="tab-wiki" class="flex-1 py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors btn-secondary">Wikipedia</button>
+                </div>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1 bg-white/40 dark:bg-black/40 space-y-5" id="dict-content">
+                <div class="text-center py-6 text-gray-500 text-sm">Search for a word to see its definition or Wikipedia article.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center p-4 z-50 hidden transition-opacity">
+        <div class="glass-panel modal-enter w-full max-w-sm flex flex-col relative overflow-hidden rounded-2xl">
+            <div class="flex justify-between items-center p-5 border-b border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/40">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">Account Access</h3>
+                <button id="close-login-modal-btn" class="p-1.5 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="space-y-1"><label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Email</label><input type="email" id="email-input" class="glass-input w-full p-2.5 rounded-lg text-sm" placeholder="you@example.com"></div>
+                <div class="space-y-1"><label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Password</label><input type="password" id="password-input" class="glass-input w-full p-2.5 rounded-lg text-sm" placeholder="••••••••"></div>
+                <div id="auth-error" class="text-red-500 text-xs font-medium hidden bg-red-50 dark:bg-red-500/10 p-2.5 rounded-lg border border-red-100 dark:border-red-500/20"></div>
+                <div class="flex gap-2 pt-2"><button id="email-login-btn" class="flex-1 btn-primary text-sm font-medium py-2.5 rounded-lg">Login</button><button id="email-signup-btn" class="flex-1 btn-secondary text-sm font-medium py-2.5 rounded-lg">Sign Up</button></div>
+                <div class="relative flex py-2 items-center"><div class="flex-grow border-t border-gray-200 dark:border-white/10"></div><span class="flex-shrink mx-4 text-gray-500 dark:text-gray-400 text-[10px] font-bold uppercase tracking-wider">OR</span><div class="flex-grow border-t border-gray-200 dark:border-white/10"></div></div>
+                <button id="google-login-btn" class="w-full btn-secondary text-sm font-medium py-2.5 rounded-lg flex items-center justify-center gap-2">
+                    <svg class="w-4 h-4" viewBox="0 0 48 48"><g><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></g></svg>
+                    Continue with Google
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quote Studio Modal -->
+    <div id="quote-modal" class="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-3 md:p-6 z-50 hidden transition-opacity">
+        <div class="glass-panel modal-enter w-full max-w-lg lg:max-w-6xl xl:max-w-7xl max-h-[92vh] flex flex-col rounded-3xl shadow-2xl overflow-hidden">
+            <div class="flex justify-between items-center p-4 md:p-5 border-b border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/40 shrink-0">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base md:text-lg font-bold text-gray-900 dark:text-white leading-tight">Quote Studio</h3>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Design and share aesthetic scripture art</p>
+                    </div>
+                </div>
+                <button id="close-quote-modal-btn" class="p-1.5 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all cursor-pointer"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            </div>
+            
+            <!-- 2-Column Responsive Body: Preview Left, Customization Right on Desktop -->
+            <div class="grid grid-cols-1 lg:grid-cols-12 overflow-y-auto divide-y lg:divide-y-0 lg:divide-x divide-gray-100 dark:divide-white/5 flex-1 min-h-0">
+                
+                <!-- LEFT COLUMN: LIVE ARTWORK PREVIEW & BACKGROUND PHOTO -->
+                <div class="lg:col-span-5 p-4 md:p-6 flex flex-col justify-start space-y-4 bg-gray-50/40 dark:bg-black/20 overflow-y-auto">
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center gap-2">
+                            <div class="flex items-center gap-1.5 relative">
+                                <label class="block text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">Live Preview</label>
+                                <!-- Tiny ! Icon Button with Popover on PC hover or mobile click -->
+                                <div class="relative inline-flex items-center group">
+                                    <button type="button" id="quote-preview-info-btn" class="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white bg-gray-200/80 hover:bg-gray-300 dark:bg-white/10 dark:hover:bg-white/20 transition-all cursor-pointer focus:outline-none" aria-label="Preview details" title="Preview details">
+                                        !
+                                    </button>
+                                    <div id="quote-preview-info-popover" class="absolute left-0 top-6 w-64 max-w-[calc(100vw-3rem)] p-2.5 rounded-xl bg-gray-900/95 dark:bg-zinc-800/95 text-white text-[11px] leading-relaxed shadow-xl border border-white/10 opacity-0 invisible pointer-events-none group-hover:opacity-100 group-hover:visible group-hover:pointer-events-auto transition-all z-30 text-left">
+                                        The live preview gives a quick stylistic preview. High-resolution typography, line wrapping, and artwork are accurately rendered upon download or copy.
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Aspect Ratio Switcher -->
+                            <div class="flex bg-gray-100 dark:bg-white/5 p-0.5 rounded-lg text-[10px] font-bold">
+                                <button type="button" class="quote-ratio-btn px-2.5 py-1 rounded-md transition-all active bg-white dark:bg-white/10 text-primary shadow-xs cursor-pointer" data-ratio="1:1">1:1</button>
+                                <button type="button" class="quote-ratio-btn px-2.5 py-1 rounded-md transition-all text-gray-500 dark:text-gray-400 cursor-pointer" data-ratio="9:16">9:16</button>
+                                <button type="button" class="quote-ratio-btn px-2.5 py-1 rounded-md transition-all text-gray-500 dark:text-gray-400 cursor-pointer" data-ratio="16:9">16:9</button>
+                            </div>
+                        </div>
+                        
+                        <div class="w-full bg-gray-200/60 dark:bg-black/60 rounded-2xl p-4 flex items-center justify-center min-h-[260px] lg:min-h-[350px] overflow-hidden border border-gray-200/80 dark:border-white/5 shadow-inner">
+                            <div id="quote-live-preview-box" class="rounded-xl shadow-2xl flex flex-col justify-between p-4 sm:p-5 transition-all duration-200 relative overflow-hidden text-center max-w-full" style="width: 280px; height: 280px; background-color: #111111; color: #FFFFFF; font-family: 'Crimson Pro', serif;">
+                                <div class="absolute inset-0 bg-cover bg-center transition-all hidden" id="quote-preview-bg-img"></div>
+                                <div class="absolute inset-0 transition-all pointer-events-none hidden" id="quote-preview-bg-overlay"></div>
+                                <div class="relative z-10 flex flex-col items-center select-none pt-0.5" id="quote-preview-quote-mark">
+                                    <span class="text-3xl leading-none font-serif opacity-25">“</span>
+                                </div>
+                                <div class="relative z-10 my-auto px-1 flex-1 flex items-center justify-center overflow-hidden">
+                                    <p id="quote-preview-text" class="leading-relaxed italic font-normal transition-all duration-150">In the beginning was the Word, and the Word was with God, and the Word was God.</p>
+                                </div>
+                                <div class="relative z-10 pt-2 flex flex-col items-center">
+                                    <div class="w-12 h-px mb-2 opacity-30 bg-current"></div>
+                                    <p id="quote-preview-ref" class="text-[11px] font-semibold tracking-wider uppercase opacity-90">— John 1:1 (CPDV)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIGHT COLUMN: CUSTOMIZATION OPTIONS -->
+                <div class="lg:col-span-7 p-4 md:p-6 space-y-4 overflow-y-auto">
+                    <!-- Scripture Selection -->
+                    <div>
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1.5">Scripture Passage</label>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <div><label class="block text-[9px] font-semibold text-gray-400 mb-0.5">Book</label><select id="quote-book-select" class="glass-input w-full p-2 rounded-lg text-xs outline-none"></select></div>
+                            <div><label class="block text-[9px] font-semibold text-gray-400 mb-0.5">Chapter</label><select id="quote-chapter-select" class="glass-input w-full p-2 rounded-lg text-xs outline-none"></select></div>
+                            <div><label class="block text-[9px] font-semibold text-gray-400 mb-0.5">From Verse</label><input type="number" id="quote-verse-from" class="glass-input w-full p-2 rounded-lg text-xs outline-none" min="1" value="1"></div>
+                            <div><label class="block text-[9px] font-semibold text-gray-400 mb-0.5">To Verse</label><input type="number" id="quote-verse-to" class="glass-input w-full p-2 rounded-lg text-xs outline-none" min="1" value="1"></div>
+                        </div>
+                    </div>
+
+                    <!-- Translation & Font Family -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1">Translation</label>
+                            <select id="translation-select-quote" class="glass-input w-full p-2 rounded-lg text-xs outline-none"></select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1">Font Family</label>
+                            <select id="quote-font-select" class="glass-input w-full p-2 rounded-lg text-xs outline-none"></select>
+                        </div>
+                    </div>
+
+                    <!-- Color & Aesthetic Presets -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">Palette Presets</label>
+                            <div class="flex gap-2 items-center">
+                                <span class="text-[10px] text-gray-400">Custom Colors:</span>
+                                <input type="color" id="quote-bg-color" value="#111111" class="w-6 h-6 rounded-md cursor-pointer border-0 p-0" title="Background Color">
+                                <input type="color" id="quote-text-color" value="#FFFFFF" class="w-6 h-6 rounded-md cursor-pointer border-0 p-0" title="Text Color">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-1.5" id="quote-palette-presets">
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#111111" data-text="#FFFFFF" data-font="Crimson Pro" style="background: #111111; color: #FFFFFF;">Velvet Noir</button>
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#070e1c" data-text="#e2e8f0" data-font="Lora" style="background: #070e1c; color: #e2e8f0;">Night Sky</button>
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#13091f" data-text="#f3e8ff" data-font="Merriweather" style="background: #13091f; color: #f3e8ff;">Royal Amethyst</button>
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#13100a" data-text="#fef08a" data-font="Crimson Pro" style="background: #13100a; color: #fef08a;">Golden Age</button>
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#f4ebd9" data-text="#382b1d" data-font="Tinos" style="background: #f4ebd9; color: #382b1d;">Ancient Scroll</button>
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#eaf4ee" data-text="#123924" data-font="Lora" style="background: #eaf4ee; color: #123924;">Eden Sage</button>
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#17070b" data-text="#ffe4e6" data-font="Playfair Display" style="background: #17070b; color: #ffe4e6;">Red Rose</button>
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#040a17" data-text="#e0f2fe" data-font="Oswald" style="background: #040a17; color: #e0f2fe;">Neon Blue</button>
+                            <button type="button" class="quote-palette-chip text-[10px] font-semibold px-2 py-1.5 rounded-lg border border-gray-200/60 dark:border-white/10 text-center cursor-pointer" data-bg="#ffffff" data-text="#18181b" data-font="Inter" style="background: #ffffff; color: #18181b;">Pure White</button>
+                        </div>
+                    </div>
+                
+
+                    <!-- Background Photo (Pexels) -->
+                    <div class="space-y-2 pt-3 border-t border-gray-200/80 dark:border-white/5">
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">Background Photo (Pexels)</label>
+                            <button type="button" id="clear-bg-image-btn" class="hidden text-[10px] font-bold uppercase text-red-500 hover:text-red-400 transition-colors cursor-pointer">Clear Photo</button>
+                        </div>
+                        <div class="flex gap-2 mb-2">
+                            <input type="text" id="pexels-search-input" class="glass-input flex-grow p-2 rounded-lg text-xs outline-none placeholder-gray-400" placeholder="e.g. dawn, mountains, stars, church">
+                            <button type="button" id="pexels-search-btn" class="btn-secondary text-xs font-semibold px-3 py-1.5 rounded-lg shrink-0 cursor-pointer">Search</button>
+                        </div>
+                        <div id="pexels-results" class="flex gap-2 overflow-x-auto pb-2 hidden custom-scrollbar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PINNED BOTTOM ACTION BAR: ALWAYS VISIBLE ON MOBILE, TABLET & DESKTOP (NO SCROLLING NEEDED) -->
+            <div class="p-3 sm:p-4 border-t border-gray-200/80 dark:border-white/10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md shrink-0 flex items-center justify-between gap-3 z-30 shadow-lg">
+                <div class="hidden sm:flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>High-definition scripture artwork with watermark</span>
+                    <span id="quote-loader" class="hidden text-xs text-primary font-semibold ml-2 animate-pulse">Rendering artwork...</span>
+                </div>
+                <div class="flex items-center gap-2.5 w-full sm:w-auto">
+                    <button type="button" id="copy-quote-clipboard-btn" class="flex-1 sm:flex-none btn-secondary font-semibold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all hover:scale-[1.02] cursor-pointer">
+                        <svg class="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 9h9a2 2 0 012 2v9a2 2 0 01-2 2H9a2 2 0 01-2-2v-9a2 2 0 012-2z M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>
+                        <span>Copy Image</span>
+                    </button>
+                    <button type="button" id="generate-and-download-btn" class="flex-1 sm:flex-none btn-primary font-semibold py-2.5 px-5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all hover:scale-[1.02] cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        <span>Download PNG</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Highlights & Notes Modal -->
+    <div id="highlights-modal" class="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-3 md:p-6 z-50 hidden transition-opacity">
+        <div class="glass-panel modal-enter w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl">
+            <div class="flex justify-between items-center p-4 md:p-5 border-b border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/40">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.89 1.147l-3.102.993a.375.375 0 01-.495-.495l.993-3.102a4.5 4.5 0 011.147-1.89l13.418-13.418z"></path></svg>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-base md:text-lg font-bold text-gray-900 dark:text-white leading-tight">Highlights & Notes</h3>
+                            <span id="highlights-count-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">0</span>
+                        </div>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Personal reflections, color tags & annotations</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <!-- Unified Expandable Markdown Action Menu (clean on mobile & desktop) -->
+                    <div class="relative" id="notes-markdown-menu-wrapper">
+                        <button type="button" id="notes-markdown-menu-btn" class="btn-secondary text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1.5" title="Markdown Notes (Import / Export)">
+                            <svg class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            <span>Markdown</span>
+                            <svg id="notes-markdown-menu-chevron" class="w-3 h-3 text-gray-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        
+                        <!-- Dropdown Menu -->
+                        <div id="notes-markdown-dropdown" class="absolute right-0 top-full mt-1.5 w-48 rounded-xl glass-panel bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-gray-200/80 dark:border-white/10 shadow-2xl py-1.5 z-50 hidden transition-all">
+                            <button type="button" id="import-notes-md-btn" class="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2.5">
+                                <svg class="w-3.5 h-3.5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                                <div>
+                                    <div class="font-semibold leading-tight">Import .md</div>
+                                    <div class="text-[10px] text-gray-400">Load notes from file</div>
+                                </div>
+                            </button>
+                            <button type="button" id="export-notes-md-btn" class="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2.5">
+                                <svg class="w-3.5 h-3.5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                <div>
+                                    <div class="font-semibold leading-tight">Export .md</div>
+                                    <div class="text-[10px] text-gray-400">Save notes as Markdown</div>
+                                </div>
+                            </button>
+                            <div class="my-1 border-t border-gray-100 dark:border-white/5"></div>
+                            <button type="button" id="copy-all-notes-btn" class="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2.5">
+                                <svg class="w-3.5 h-3.5 text-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 9h9a2 2 0 012 2v9a2 2 0 01-2 2H9a2 2 0 01-2-2v-9a2 2 0 012-2z M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>
+                                <div>
+                                    <div class="font-semibold leading-tight">Copy All Notes</div>
+                                    <div class="text-[10px] text-gray-400">Copy to clipboard</div>
+                                </div>
+                            </button>
+                        </div>
+                        <input type="file" id="import-notes-file-input" accept=".md,text/markdown,text/plain" class="hidden">
+                    </div>
+                    <button id="close-highlights-modal-btn" class="p-1.5 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                </div>
+            </div>
+
+            <div class="p-4 md:p-6 overflow-y-auto space-y-4">
+                <!-- Search & Filters Toolbar -->
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <div class="relative flex-1">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"></path></svg>
+                        </div>
+                        <input type="text" id="highlights-search" class="glass-input w-full pl-9 pr-3 py-2 rounded-lg outline-none text-xs placeholder-gray-400" placeholder="Search references, text, notes, or tags...">
+                    </div>
+                    <!-- Filter Pill + Sort Dropdown -->
+                    <div class="flex items-center gap-1.5">
+                        <button id="filter-notes-only-btn" class="btn-secondary text-xs font-semibold px-2.5 py-2 rounded-lg flex items-center gap-1 shrink-0">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            <span>Notes Only</span>
+                        </button>
+                        <select id="highlights-sort-select" class="glass-input text-xs font-semibold p-2 rounded-lg outline-none cursor-pointer">
+                            <option value="newest">Newest First</option>
+                            <option value="oldest">Oldest First</option>
+                            <option value="scripture">Scripture Order</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Category Filter Pills -->
+                <div id="highlights-category-filter" class="flex flex-wrap gap-1.5 pb-2 border-b border-gray-200 dark:border-white/10"></div>
+
+                <!-- Highlight Cards List -->
+                <div id="highlights-content" class="space-y-3.5"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bookmarks Modal -->
+    <div id="bookmarks-modal" class="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center p-3 md:p-6 z-50 hidden transition-opacity">
+        <div class="glass-panel modal-enter w-full max-w-md max-h-[85vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl">
+            <div class="flex justify-between items-center p-4 md:p-5 border-b border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/40">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.5 3.5h-11a2 2 0 00-2 2v15l6.5-3 6.5 3v-15a2 2 0 00-2-2z"></path></svg>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-base md:text-lg font-bold text-gray-900 dark:text-white leading-tight">Bookmarks</h3>
+                            <span id="bookmarks-count-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">0</span>
+                        </div>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Quick-access saved scripture chapters</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="add-current-bookmark-btn" class="btn-primary text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow-xs" title="Bookmark current chapter">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4.5v15m7.5-7.5h-15"></path></svg>
+                        <span>Bookmark</span>
+                    </button>
+                    <button id="close-bookmarks-modal-btn" class="p-1.5 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                </div>
+            </div>
+
+            <!-- Search Filter & Actions Bar -->
+            <div class="p-3 border-b border-gray-100 dark:border-white/5 bg-white/20 dark:bg-black/20 flex items-center gap-2">
+                <div class="relative flex-1">
+                    <div class="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-gray-400">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <input type="text" id="bookmarks-search-input" class="glass-input w-full pl-8 pr-2.5 py-1.5 rounded-lg text-xs outline-none placeholder-gray-400" placeholder="Filter bookmarks by book or chapter...">
+                </div>
+                <button id="copy-bookmarks-btn" class="btn-secondary text-[11px] font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 shrink-0" title="Copy all bookmarks to clipboard">
+                    <svg class="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 9h9a2 2 0 012 2v9a2 2 0 01-2 2H9a2 2 0 01-2-2v-9a2 2 0 012-2z M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>
+                    <span>Copy All</span>
+                </button>
+            </div>
+
+            <!-- Bookmarks List -->
+            <div class="p-4 overflow-y-auto flex-1 space-y-2">
+                <div id="bookmarks-content" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Verse Action Popup -->
+    <div id="highlight-popup-container" class="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-end md:items-center justify-center p-4 pb-8 md:p-4 hidden transition-opacity">
+        <div id="highlight-popup" class="glass-panel modal-enter w-full max-w-sm overflow-y-auto max-h-[85vh] rounded-3xl md:rounded-2xl">
+            <div class="flex justify-between items-center p-4 border-b border-gray-100 dark:border-white/5 bg-white/40 dark:bg-black/40"><p class="text-[10px] font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">Verse Actions</p><button id="close-highlight-popup" class="p-1.5 rounded-full text-gray-600 dark:text-gray-300 hover:bg-white/50 dark:hover:bg-white/10 transition-all"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button></div>
+            <div class="p-5">
+                <div class="grid grid-cols-2 gap-3 mb-4"><div><label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">From</label><input type="number" id="popup-verse-from" class="glass-input w-full p-2 text-sm rounded-lg outline-none" min="1"></div><div><label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">To</label><input type="number" id="popup-verse-to" class="glass-input w-full p-2 text-sm rounded-lg outline-none" min="1"></div></div>
+                <p id="highlight-verse-ref-display" class="text-lg font-bold text-center mb-4 text-primary"></p>
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button id="listen-verse-btn" class="col-span-2 btn-primary flex items-center justify-center gap-2 text-xs font-semibold py-2 px-3 rounded-xl shadow-xs cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M11 5L6 9H2v6h4l5 4V5z"></path></svg>
+                        <span>Listen to Verse</span>
+                    </button>
+                    <button id="copy-verse-btn" class="btn-secondary flex items-center justify-center gap-1.5 text-xs font-medium py-2 px-3 rounded-lg"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M9 9h9a2 2 0 012 2v9a2 2 0 01-2 2H9a2 2 0 01-2-2v-9a2 2 0 012-2z M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg> Copy</button>
+                    <button id="share-verse-btn" class="btn-secondary flex items-center justify-center gap-1.5 text-xs font-medium py-2 px-3 rounded-lg"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"></path></svg> Share</button>
+                    <button id="bookmark-verse-btn" class="btn-secondary flex items-center justify-center gap-1.5 text-xs font-medium py-2 px-3 rounded-lg"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.5 3.5h-11a2 2 0 00-2 2v15l6.5-3 6.5 3v-15a2 2 0 00-2-2z"></path></svg> <span id="bookmark-btn-text">Bookmark</span></button>
+                    <button id="quote-verse-btn" class="btn-secondary flex items-center justify-center gap-1.5 text-xs font-medium py-2 px-3 rounded-lg"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5z"></path></svg> Quote</button>
+                </div>
+                
+                <hr class="my-5 border-gray-200 dark:border-white/10">
+                <div class="flex justify-center gap-4 mb-5">
+                    <button data-color="yellow" class="color-swatch w-7 h-7 bg-yellow-400 rounded-full"></button>
+                    <button data-color="green" class="color-swatch w-7 h-7 bg-green-400 rounded-full"></button>
+                    <button data-color="blue" class="color-swatch w-7 h-7 bg-blue-400 rounded-full"></button>
+                    <button data-color="pink" class="color-swatch w-7 h-7 bg-pink-400 rounded-full"></button>
+                    <button data-color="purple" class="color-swatch w-7 h-7 bg-purple-400 rounded-full"></button>
+                </div>
+                
+                <div class="note-container mb-4">
+                    <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Note</label>
+                    <textarea id="highlight-note-input" class="glass-input w-full p-3 rounded-xl text-sm outline-none placeholder-gray-400 resize-y min-h-[80px]" placeholder="Add a markdown note..."></textarea>
+                </div>
+                
+                <div class="mb-4"><select id="highlight-category-select" class="glass-input w-full p-2.5 rounded-lg text-sm outline-none"></select></div>
+                <div class="flex gap-2 mb-6">
+                    <input type="text" id="new-category-input" class="glass-input flex-grow p-2.5 rounded-lg text-sm outline-none placeholder-gray-400" placeholder="New Tag">
+                    <button id="add-category-btn" class="btn-secondary text-xs font-medium px-3 rounded-lg">Add</button>
+                </div>
+                <div class="flex gap-2">
+                    <button id="save-highlight-btn" class="flex-1 btn-primary text-sm font-medium py-2.5 rounded-lg">Save</button>
+                    <button id="remove-highlight-btn" class="flex-1 bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-500/20 text-sm font-medium py-2.5 rounded-lg transition-colors">Remove</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- CONFIRMATION MODAL FOR CRITICAL ACTIONS -->
+    <div id="confirm-modal" class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden transition-opacity duration-200">
+        <div class="glass-panel w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 dark:border-white/10 overflow-hidden transform transition-all duration-200 scale-95 opacity-0" id="confirm-modal-box">
+            <div class="p-6">
+                <div class="flex items-start gap-4">
+                    <div id="confirm-modal-icon-container" class="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    </div>
+                    <div class="space-y-1.5 flex-1 min-w-0">
+                        <h3 id="confirm-modal-title" class="text-base font-bold text-gray-900 dark:text-white leading-snug">Confirm Action</h3>
+                        <p id="confirm-modal-message" class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">Are you sure you want to proceed with this action? This cannot be undone.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50/80 dark:bg-black/30 px-6 py-4 border-t border-gray-100 dark:border-white/5 flex items-center justify-end gap-2.5">
+                <button type="button" id="confirm-modal-cancel-btn" class="btn-secondary px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer">Cancel</button>
+                <button type="button" id="confirm-modal-confirm-btn" class="bg-red-600 hover:bg-red-700 text-white font-semibold px-4 py-2 rounded-xl text-xs shadow-sm transition-all cursor-pointer">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Voice Reader Bar -->
+    <div id="voice-player-bar" class="fixed bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-xl transition-all duration-300 transform translate-y-32 opacity-0 pointer-events-none">
+        <div class="glass-panel bg-white/95 dark:bg-[#121214]/95 backdrop-blur-2xl rounded-2xl shadow-2xl border border-gray-200/90 dark:border-white/10 p-3 sm:p-3.5 flex flex-col gap-2.5">
+            <!-- Top Info Row -->
+            <div class="flex items-center justify-between gap-2 border-b border-gray-100 dark:border-white/5 pb-2">
+                <!-- Left: Audio status & Verse Ref -->
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <div id="voice-player-soundwave" class="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M11 5L6 9H2v6h4l5 4V5z"></path></svg>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5">
+                            <span id="voice-player-ref" class="text-xs font-bold text-gray-900 dark:text-white truncate cursor-pointer hover:text-primary transition-colors" title="Click to scroll to verse">Genesis 1:1</span>
+                            <span id="voice-player-progress" class="text-[10px] font-medium text-gray-400 shrink-0">1/31</span>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+                            <span id="voice-player-version" class="uppercase tracking-wider font-semibold text-primary truncate max-w-[120px]">Douay-Rheims</span>
+                            <span class="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium shrink-0" title="Background audio & lock screen controls active">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span class="hidden sm:inline">PWA Active</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Voice & Speed Controls -->
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <!-- Speed Pill Selector -->
+                    <button id="voice-speed-btn" type="button" class="btn-secondary text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-0.5 cursor-pointer hover:border-primary/40 transition-colors" title="Playback Speed">
+                        <span id="voice-speed-label">1.0x</span>
+                    </button>
+
+                    <!-- Voice Selector Menu Button -->
+                    <div class="relative">
+                        <button id="voice-select-btn" type="button" class="btn-secondary text-[10px] font-semibold px-2 py-1 rounded-lg flex items-center gap-1 cursor-pointer max-w-[110px] hover:border-primary/40 transition-colors" title="Select Voice">
+                            <span id="voice-select-label" class="truncate">Voice</span>
+                            <svg class="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.5 8.25l-7.5 7.5-7.5-7.5"></path></svg>
+                        </button>
+                        <!-- Voice Dropdown Popover -->
+                        <div id="voice-select-popover" class="absolute bottom-full right-0 mb-2 w-64 max-h-56 overflow-y-auto glass-panel bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl p-2 hidden z-50 space-y-1">
+                            <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2 py-1">Available Voices</div>
+                            <div id="voice-list-container" class="space-y-0.5"></div>
+                        </div>
+                    </div>
+
+                    <!-- Close / Stop Button -->
+                    <button id="voice-player-close-btn" type="button" class="p-1 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer" title="Stop & Close Voice Reader">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bottom Controls Row -->
+            <div class="flex items-center justify-between gap-3">
+                <!-- Progress Line -->
+                <div class="flex-1 min-w-0 flex items-center gap-2">
+                    <div class="w-full bg-gray-200 dark:bg-white/10 h-1.5 rounded-full overflow-hidden">
+                        <div id="voice-player-bar-progress" class="bg-primary h-full rounded-full transition-all duration-300" style="width: 0%;"></div>
+                    </div>
+                </div>
+
+                <!-- Playback Buttons -->
+                <div class="flex items-center gap-1.5 shrink-0">
+                    <!-- Prev Verse -->
+                    <button id="voice-player-prev-btn" type="button" class="p-1.5 rounded-xl text-gray-600 dark:text-gray-300 hover:text-primary hover:bg-gray-100 dark:hover:bg-zinc-800 transition-all cursor-pointer" title="Previous Verse">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.75 19.5L8.25 12l7.5-7.5"></path></svg>
+                    </button>
+
+                    <!-- Play / Pause Main Button -->
+                    <button id="voice-player-play-btn" type="button" class="w-9 h-9 rounded-full bg-primary hover:opacity-90 text-white flex items-center justify-center shadow-md transition-all transform active:scale-95 cursor-pointer" title="Play / Pause">
+                        <svg id="voice-player-play-icon" class="w-4 h-4 ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"></path></svg>
+                        <svg id="voice-player-pause-icon" class="w-4 h-4 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                    </button>
+
+                    <!-- Next Verse -->
+                    <button id="voice-player-next-btn" type="button" class="p-1.5 rounded-xl text-gray-600 dark:text-gray-300 hover:text-primary hover:bg-gray-100 dark:hover:bg-zinc-800 transition-all cursor-pointer" title="Next Verse">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.25 4.5l7.5 7.5-7.5 7.5"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-notification" class="fixed bottom-10 right-6 md:right-10 bg-gray-900 dark:bg-white text-white dark:text-black text-sm font-medium py-3 px-5 rounded-xl shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 ease-out z-[60]">
+        Copied to clipboard!
+    </div>
+    
+    <input type="file" id="import-file-input" accept=".json" class="hidden">
+
+    <script src="app.js"></script>
+</body>
+</html>
